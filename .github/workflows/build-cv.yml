@@ -1,0 +1,53 @@
+name: Build CV PDF
+
+on:
+  push:
+    paths:
+      - 'cv.tex'
+      - 'sections/**'
+      - 'styles/**'
+      - '.github/workflows/build-cv.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cv-pdf-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.ref_type == 'branch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Install PDFLaTeX
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends texlive-latex-extra texlive-fonts-recommended
+
+      - name: Compile CV
+        run: |
+          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct -- cv.tex sections/ styles/)"
+          export FORCE_SOURCE_DATE=1
+          pdflatex -interaction=nonstopmode -halt-on-error cv.tex
+          test -s cv.pdf
+
+      - name: Commit updated PDF if changed
+        run: |
+          if git diff --quiet -- cv.pdf; then
+            echo "cv.pdf is already up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cv.pdf
+          git commit -m "Regenerate CV PDF"
+          git push origin "HEAD:${GITHUB_REF}"
